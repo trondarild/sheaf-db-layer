@@ -14,6 +14,19 @@ textbook-db's schema or files.
 - `references/<key>.json` — per-book structured bibliography
 - `chapters/<key>.json` — chapter boundaries and page ranges
 
+## Interface contract (categorical I/O)
+
+- [ ] Define the intake functor from the textbook-db interface category into sheaf-db's
+      concept-graph structures. Classical goal: this project should know as little as
+      possible about textbook-db's internals — only what the shared interface category
+      exposes. Counterpart task (defining that interface category) lives in
+      textbook-db-project/todo.md and should be drafted in parallel.
+      - The intake functor maps: Term → ConceptCandidate, Candidate → RelationCandidate,
+        Occurrence → IndexEvidence, Reference → EvidenceSpan (tentative — revise once
+        the interface category is formalised on the textbook-db side).
+      - Until the formal contract exists, the current file-list above is the working
+        interface; treat it as the object-level stand-in for the eventual functor spec.
+
 ## Design documents
 
 - `design/architecture.md` — full SQL schema + layered architecture sketch
