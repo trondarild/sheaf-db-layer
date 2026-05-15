@@ -1,0 +1,86 @@
+# Todo
+
+## Architecture principle
+
+sheaf-db is a **separate project** that composes with textbook-db by consuming its
+outputs. textbook-db's pipeline stays intact and unchanged; this project reads from it
+and builds its own graph/presheaf representation independently. No changes to
+textbook-db's schema or files.
+
+**Reads from textbook-db (read-only):**
+- `textbook_db.sqlite` — terms, occurrences, books, candidates
+- `lookup.json` — unified term → books → pages index
+- `candidates.json` — fuzzy-matched term pairs (candidate restriction morphisms)
+- `references/<key>.json` — per-book structured bibliography
+- `chapters/<key>.json` — chapter boundaries and page ranges
+
+## Design documents
+
+- `design/architecture.md` — full SQL schema + layered architecture sketch
+  (four layers, concept/context/claim tables, level-of-explanation field, relation types,
+  zoom/synthesize operations, implementation path)
+- `design/phenomenology-interface.md` — phenomenology as typed interface layer;
+  functor faithfulness; case study on integrating Stanghellini with core science books
+
+## Exploration
+
+- [ ] Establish whether the corpus can be modelled as a sheaf in the categorical sense:
+      each book is an "open set" over its domain (neuroscience, psychiatry, gastro, etc.);
+      terms shared or fuzzy-matched across books are restriction maps between sections;
+      a consistent assignment of meaning/pages across overlapping domains constitutes a
+      global section — i.e. knowledge that holds across fields.
+      - Why valuable: books crossing fields (neuro+psychology, neuro+gastro, neuropsychiatry)
+        are natural gluing sites; sheaf structure makes explicit which claims are field-local
+        vs. field-invariant, and where gluing fails (contradictions, gaps, granularity mismatches).
+      - Concrete representation: terms as sections, books as opens, candidates.json pairs
+        as candidate restriction morphisms; global section query = find the maximal consistent
+        sub-sheaf containing a term.
+      - Starting point: Spivak (2014) "Category Theory for the Sciences" ch. 7 (databases as
+        functors); Curry (2014) thesis on sheaves and data fusion; check pysheaf library.
+
+## Implementation
+
+### Phase 1 — Concept graph (minimal prototype)
+
+- [ ] Schema: `concepts`, `concept_relations`, `contexts`, `context_concepts`, `claims`,
+      `concept_maps` (see design/architecture.md for full column specs)
+- [ ] Ingestion: read textbook-db outputs → populate concept nodes from index terms;
+      candidates.json pairs become candidate `concept_relations`
+- [ ] Level-of-explanation field on every concept, claim, relation, context:
+      molecular=1, cellular=2, organ-system=3, organismic=4, interpersonal=5, social-cultural=6
+- [ ] Implement `lookup(term)` → index entries, sections, concepts, references
+
+### Phase 2 — Zoom operations
+
+- [ ] Implement `zoom(concept, direction="in|out")` traversing `part_of`, `is_a`,
+      `realizes`, `mechanism_of` relation types via recursive graph traversal
+- [ ] Cross-field traversal: follow restriction morphisms across book/domain boundaries
+
+### Phase 3 — Synthesis
+
+- [ ] Implement `synthesize(query)`:
+      retrieve concepts + contexts + claims → cluster by field and level →
+      identify overlaps → produce cross-level summary with citations
+- [ ] `claim_compatibility` table: tag pairs as consistent / conflicting / narrower /
+      broader / orthogonal / unknown
+- [ ] LLM acts as parser, mapper, and synthesis narrator over structured data —
+      not as the knowledge store
+
+### Phase 4 — Phenomenology interface (see design/phenomenology-interface.md)
+
+- [ ] Model phenomenology as typed coordinate system over lived experience, not as doctrine:
+      `experience episode → intentional object → bodily orientation → affective tone →
+       temporal structure → salience field → action-readiness → reportability constraints`
+- [ ] Three layers: raw subjective report → phenomenological coding → cross-level anchoring
+- [ ] Map Stanghellini 2019 index terms into phenomenological coding dimensions
+- [ ] Link coded dimensions sparsely to candidate mechanisms from core-science books
+
+## Notes
+
+Primary synthesis axes (from textbook-db corpus):
+- Subjectivity / phenomenology — Stanghellini 2019
+- Society / sociology — Franks 2013
+- Core science — Kandel 2021, Yudofsky 2018, Buzaki 2011, Baars 2013, Gazzaniga 2014,
+  Cacioppo 2007, Kusnecov 2014, Faure 2013
+A three-way subjectivity × society × science synthesis is the default target when all
+three axes are covered.
