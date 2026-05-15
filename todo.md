@@ -88,6 +88,37 @@ textbook-db's schema or files.
 - [ ] Map Stanghellini 2019 index terms into phenomenological coding dimensions
 - [ ] Link coded dimensions sparsely to candidate mechanisms from core-science books
 
+## UI
+
+### Terminal UI
+
+- [ ] Interactive TUI (`tui.py`) using `Textual` or `curses`:
+      - Search bar → calls `lookup(term)`, displays concept + occurrences by book
+      - Zoom panel: navigate the concept graph in/out with arrow keys or j/k
+      - Synthesis panel: cross-field overlap table for the selected concept
+      - Status bar showing relation type filter, depth, active db path
+- [ ] Pager-friendly plain-text output mode (already partially in place via CLI);
+      pipe-friendly: `python3 sheaf_db.py synthesize "memory" | less`
+- [ ] Symlink `bin/sheaf-db` (and any future piped commands) into `~/.local/bin`
+      so they are available on PATH without modifying shell config:
+      `ln -s $(pwd)/bin/sheaf-db ~/.local/bin/sheaf-db`
+      Ensure `~/.local/bin` is in PATH (standard on most modern Linux/macOS setups).
+
+### Web UI
+
+- [ ] Minimal Flask/FastAPI backend exposing `lookup`, `zoom`, `synthesize` as JSON endpoints
+- [ ] Frontend: concept graph visualisation (e.g. D3 force graph) with book-coloured nodes
+- [ ] Cross-field overlap table with sortable score/match_type columns
+- [ ] Global section candidates highlighted in the graph
+
+### Claude skill (sheaf-db as a tool)
+
+- [ ] Wrap `lookup`, `zoom`, `synthesize` as Claude tool-use functions
+      so Claude can query sheaf-db during a conversation
+- [ ] Skill prompt: instructs Claude to use structured results as evidence,
+      not to confabulate — LLM as narrator over sheaf-db output
+- [ ] Register as a skill in the FleetView/Claude Code harness
+
 ## Notes
 
 Primary synthesis axes (from textbook-db corpus):

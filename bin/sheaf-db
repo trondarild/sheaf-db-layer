@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# sheaf-db — launch the sheaf-db terminal UI
+# Add this script's parent directory (bin/) to PATH, or symlink to ~/bin:
+#   ln -s /path/to/sheaf-db/bin/sheaf-db ~/bin/sheaf-db
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHONPATH="$DIR${PYTHONPATH:+:$PYTHONPATH}" exec python3 "$DIR/tui.py" "$@"

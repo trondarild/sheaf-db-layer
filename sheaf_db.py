@@ -225,7 +225,9 @@ def zoom(
     relation_types defaults to ZOOM_RELATION_TYPES (semantic typed relations).
     Pass ('candidate_restriction',) to explore the raw candidate graph.
 
-    Cycle detection is handled inside the recursive CTE via an id-path string.
+    Uses a Python-level BFS so each node is visited at most once regardless of
+    how many paths lead to it (the recursive-CTE approach caused path explosion
+    on dense candidate graphs).
     """
     if direction not in ("in", "out", "both"):
         raise ValueError(f"direction must be 'in', 'out', or 'both'; got {direction!r}")
@@ -262,71 +264,60 @@ def zoom(
         path=[seed_label],
     )
 
-    # SQLite placeholder list for relation types
-    placeholders = ",".join("?" * len(rel_types))
+    rel_placeholders = ",".join("?" * len(rel_types))
 
-    def _run_cte(join_src: str, join_tgt: str) -> list[ZoomNode]:
-        """Run a recursive CTE in one traversal direction.
+    def _run_bfs(join_src: str, join_tgt: str, visited: set[int]) -> list[ZoomNode]:
+        """BFS in one direction. visited is shared across directions for 'both'."""
+        frontier: list[int] = [seed_id]
+        path_map: dict[int, list[str]] = {seed_id: [seed_label]}
+        nodes: list[ZoomNode] = []
 
-        join_src / join_tgt are the concept_relations columns used to follow
-        edges: for "out" traversal, join_src=source_concept_id (walk away from
-        seed); for "in" traversal, join_src=target_concept_id (walk toward seed).
-        """
-        rows = con.execute(
-            f"""
-            WITH RECURSIVE traverse(concept_id, label, depth,
-                                    rel_type, match_type, score, id_path, label_path) AS (
-                SELECT ?, ?, 0, NULL, NULL, NULL,
-                       ',' || ? || ',',
-                       ?
-              UNION ALL
-                SELECT c.id, c.canonical_label, t.depth + 1,
-                       cr.relation_type, cr.match_type, cr.score,
-                       t.id_path || c.id || ',',
-                       t.label_path || '|' || c.canonical_label
-                FROM traverse t
-                JOIN concept_relations cr ON cr.{join_src} = t.concept_id
-                JOIN concepts c           ON c.id = cr.{join_tgt}
-                WHERE cr.relation_type IN ({placeholders})
-                  AND c.status != 'deprecated'
-                  AND t.id_path NOT LIKE '%,' || c.id || ',%'
-                  AND t.depth < ?
-            )
-            SELECT concept_id, label, depth, rel_type, match_type, score, label_path
-            FROM traverse
-            WHERE depth > 0
-            ORDER BY depth, label
-            """,
-            (seed_id, seed_label, seed_id, seed_label, *rel_types, max_depth),
-        ).fetchall()
+        for depth in range(1, max_depth + 1):
+            if not frontier:
+                break
+            fp = ",".join("?" * len(frontier))
+            rows = con.execute(
+                f"""SELECT cr.{join_src} AS parent_id,
+                           cr.relation_type, cr.match_type, cr.score,
+                           c.id AS concept_id, c.canonical_label
+                    FROM concept_relations cr
+                    JOIN concepts c ON c.id = cr.{join_tgt}
+                    WHERE cr.{join_src} IN ({fp})
+                      AND cr.relation_type IN ({rel_placeholders})
+                      AND c.status != 'deprecated'
+                    ORDER BY cr.score DESC, c.canonical_label""",
+                (*frontier, *rel_types),
+            ).fetchall()
 
-        nodes = []
-        for r in rows:
-            path = [seed_label] + r["label_path"].split("|")[1:]
-            nodes.append(ZoomNode(
-                concept_id=r["concept_id"],
-                canonical_label=r["label"],
-                depth=r["depth"],
-                relation_type=r["rel_type"],
-                match_type=r["match_type"],
-                score=r["score"],
-                path=path,
-            ))
+            next_frontier: list[int] = []
+            for row in rows:
+                if row["concept_id"] in visited:
+                    continue
+                visited.add(row["concept_id"])
+                next_frontier.append(row["concept_id"])
+                parent_path = path_map.get(row["parent_id"], [seed_label])
+                child_path = parent_path + [row["canonical_label"]]
+                path_map[row["concept_id"]] = child_path
+                nodes.append(ZoomNode(
+                    concept_id=row["concept_id"],
+                    canonical_label=row["canonical_label"],
+                    depth=depth,
+                    relation_type=row["relation_type"],
+                    match_type=row["match_type"],
+                    score=row["score"],
+                    path=child_path,
+                ))
+            frontier = next_frontier
+
         return nodes
 
     seen_ids: set[int] = {seed_id}
 
     if direction in ("out", "both"):
-        for node in _run_cte("source_concept_id", "target_concept_id"):
-            if node.concept_id not in seen_ids:
-                seen_ids.add(node.concept_id)
-                result.nodes.append(node)
+        result.nodes.extend(_run_bfs("source_concept_id", "target_concept_id", seen_ids))
 
     if direction in ("in", "both"):
-        for node in _run_cte("target_concept_id", "source_concept_id"):
-            if node.concept_id not in seen_ids:
-                seen_ids.add(node.concept_id)
-                result.nodes.append(node)
+        result.nodes.extend(_run_bfs("target_concept_id", "source_concept_id", seen_ids))
 
     con.close()
     return result
